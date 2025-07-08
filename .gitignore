@@ -1,0 +1,39 @@
+# Entornos virtuales
+venv/
+env/
+ENV/
+.venv/
+
+# Archivos de Python compilados
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos temporales del sistema
+.DS_Store
+Thumbs.db
+
+# Configuración de editor
+.vscode/
+.idea/
+
+# Docker
+*.log
+docker-compose.override.yml
+*.pid
+*.sock
+
+# Archivos de ejecución local
+archivos_clientes/
+
+# Configuración de AWS local
+.aws/
+
+# Archivos de test o cache de pytest
+.cache/
+.pytest_cache/
+
+# Otros posibles archivos
+*.env
+*.bak
+*.swp
