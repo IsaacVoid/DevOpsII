@@ -1,0 +1,21 @@
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# Archivos Python compilados
+__pycache__/
+*.py[cod]
+
+# Archivos temporales
+*.log
+*.swp
+*.bak
+
+# Archivos ocultos de sistema y editores
+.DS_Store
+.idea/
+.vscode/
+
+# Variables y archivos sensibles
+.env
