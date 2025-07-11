@@ -1,0 +1,14 @@
+name: Solicitud de mejora
+
+on:
+  push:
+    branches: [main]
+    commit-message:
+      includes: 'mejora aplicación'
+
+jobs:
+  track-improvement-request:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mostrar mensaje
+        run: echo "Se ha solicitado una MEJORA a la aplicación."

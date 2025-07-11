@@ -1,0 +1,16 @@
+name: Modificación de código
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.py'
+    commit-message:
+      includes: 'modificación código'
+
+jobs:
+  notify-code-change:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mostrar mensaje
+        run: echo "Se ha MODIFICADO el código de la aplicación."

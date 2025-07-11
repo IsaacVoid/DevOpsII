@@ -1,0 +1,14 @@
+name: Solicitud de nueva funcionalidad
+
+on:
+  push:
+    branches: [main]
+    commit-message:
+      includes: 'nueva funcionalidad'
+
+jobs:
+  log-new-feature-request:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mostrar mensaje
+        run: echo "Se ha solicitado una NUEVA FUNCIONALIDAD para la aplicación."

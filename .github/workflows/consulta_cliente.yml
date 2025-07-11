@@ -1,0 +1,16 @@
+name: Consulta de cliente
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.py'
+    commit-message:
+      includes: 'consulta cliente'
+
+jobs:
+  notify-client-query:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mostrar mensaje
+        run: echo "Se ha realizado una CONSULTA de cliente."

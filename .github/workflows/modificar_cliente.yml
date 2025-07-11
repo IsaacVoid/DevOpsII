@@ -1,0 +1,16 @@
+name: Actualizar cliente existente
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.py'
+    commit-message:
+      includes: 'actualización cliente'
+
+jobs:
+  notify-updated-client:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mostrar mensaje
+        run: echo "Se ha ACTUALIZADO la información de un cliente existente."
