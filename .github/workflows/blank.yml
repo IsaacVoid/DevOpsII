@@ -1,0 +1,16 @@
+name: Registrar nuevo cliente
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.py'
+    commit-message:
+      includes: 'nuevo cliente'
+
+jobs:
+  notify-new-client:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mostrar mensaje
+        run: echo "Se ha registrado un NUEVO CLIENTE en el sistema."
