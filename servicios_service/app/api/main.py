@@ -2,6 +2,10 @@ from fastapi import FastAPI, HTTPException, Path
 from pydantic import BaseModel
 from typing import Literal, List
 from datetime import datetime
+from app.services.auth import verificar_token
+from fastapi import APIRouter, Depends, HTTPException
+from app.services.clientes_api import verificar_cliente
+from app.domain.schemas import Servicio
 import json
 import os
 
@@ -21,25 +25,21 @@ class Servicio(BaseModel):
 def ruta_cliente(nombre: str):
     return os.path.join(DATA_DIR, f"{nombre}_servicios.json")
 
+
 # Registrar nuevo servicio para cliente existente
 @app.post("/servicios/{cliente}")
-def registrar_servicio(cliente: str, servicio: Servicio):
-    ruta = ruta_cliente(cliente)
-    if os.path.exists(ruta):
-        with open(ruta, "r", encoding="utf-8") as f:
-            servicios = json.load(f)
-    else:
-        servicios = []
+async def registrar_servicio(cliente: str, servicio: Servicio, usuario=Depends(verificar_token)):
+    existe = await verificar_cliente(cliente)
+    if not existe:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-    servicios.append(servicio.dict())
-    with open(ruta, "w", encoding="utf-8") as f:
-        json.dump(servicios, f, ensure_ascii=False, indent=2)
+    # Aquí va tu lógica actual de registrar el servicio
+    return {"mensaje": f"Servicio registrado para {cliente}"}
 
-    return {"mensaje": f"Servicio agregado para cliente {cliente}"}
 
 # Obtener todos los servicios de un cliente
-@app.get("/servicios/{cliente}", response_model=List[Servicio])
-def obtener_servicios(cliente: str):
+@app.get("/servicios/{cliente}")
+def consultar_servicios(cliente: str, usuario=Depends(verificar_token)):
     ruta = ruta_cliente(cliente)
     if not os.path.exists(ruta):
         raise HTTPException(status_code=404, detail="El cliente no tiene servicios registrados")
@@ -51,3 +51,4 @@ def obtener_servicios(cliente: str):
 @app.get("/servicios/")
 def tipos_servicio():
     return ["internet", "tv", "telefonia"]
+

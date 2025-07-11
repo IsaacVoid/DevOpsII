@@ -1,54 +1,69 @@
-from fastapi import FastAPI, HTTPException, Depends
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
-from datetime import datetime, timedelta
-from typing import Optional
+from fastapi import FastAPI, HTTPException, Depends, Form
+from fastapi.security import OAuth2PasswordBearer
+from jose import jwt, JWTError
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from app.domain.models import Base, Usuario
+from passlib.context import CryptContext
+import os
 
-# Configuración JWT
-SECRET_KEY = "clave_super_secreta"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
-
-# Usuarios de prueba (en memoria)
-usuarios = {
-    "admin": {"username": "admin", "password": "admin123", "rol": "administrador"},
-    "it": {"username": "it", "password": "it123", "rol": "it"},
-    "soporte": {"username": "soporte", "password": "soporte123", "rol": "atencion"}
-}
-
-# App FastAPI
 app = FastAPI()
+
+# Configuración
+SECRET_KEY = os.getenv("SECRET_KEY", "clave_super_secreta")
+ALGORITHM = "HS256"
+DB_URL = os.getenv("DATABASE_URL", "sqlite:///./usuarios.db")
+
+# DB
+engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(bind=engine, autoflush=False)
+Base.metadata.create_all(bind=engine)
+
+# Seguridad
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
-# Funciones JWT
+# Registro de usuario
+@app.post("/register")
+def registrar_usuario(
+    username: str = Form(...),
+    password: str = Form(...),
+    rol: str = Form(...)
+):
+    db = SessionLocal()
+    if db.query(Usuario).filter_by(username=username).first():
+        raise HTTPException(status_code=400, detail="Usuario ya existe")
+    usuario = Usuario(
+        username=username,
+        password=pwd_context.hash(password),
+        rol=rol
+    )
+    db.add(usuario)
+    db.commit()
+    db.close()
+    return {"mensaje": "Usuario registrado correctamente"}
 
-def crear_token(datos: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = datos.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+# Login
+@app.post("/login")
+def login(
+    username: str = Form(...),
+    password: str = Form(...)
+):
+    db = SessionLocal()
+    usuario = db.query(Usuario).filter_by(username=username).first()
+    if not usuario or not pwd_context.verify(password, usuario.password):
+        raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
-def verificar_token(token: str):
+    token_data = {"sub": usuario.username, "rol": usuario.rol}
+    token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
+    db.close()
+    return {"access_token": token, "token_type": "bearer"}
+
+# Verificación (opcional para otros servicios)
+@app.get("/me")
+def leer_usuario_actual(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
     except JWTError:
-        raise HTTPException(status_code=401, detail="Token inválido o expirado")
-
-# Endpoint: Login
-@app.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    usuario = usuarios.get(form_data.username)
-    if not usuario or usuario["password"] != form_data.password:
-        raise HTTPException(status_code=400, detail="Credenciales inválidas")
-
-    token_data = {"sub": usuario["username"], "rol": usuario["rol"]}
-    access_token = crear_token(token_data, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-
-    return {"access_token": access_token, "token_type": "bearer"}
-
-# Endpoint protegido de prueba
-@app.get("/protegido")
-def protegido(token: str = Depends(oauth2_scheme)):
-    payload = verificar_token(token)
-    return {"mensaje": f"Acceso autorizado para {payload['sub']} con rol {payload['rol']}"}
+        raise HTTPException(status_code=401, detail="Token inválido")

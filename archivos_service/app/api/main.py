@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from fastapi import Depends
+from app.services.auth import verificar_token
 import os
 import json
 import boto3
@@ -22,8 +24,8 @@ class ArchivoCliente(BaseModel):
     contenido: dict
 
 # Crear archivo para cliente
-@app.post("/archivo/")
-def crear_archivo(data: ArchivoCliente):
+@app.post("/archivos/{nombre}")
+def crear_archivo(nombre: str, datos: dict, usuario=Depends(verificar_token)):
     nombre_archivo = f"{data.nombre}.json"
 
     if USE_AWS:
@@ -50,8 +52,8 @@ def crear_archivo(data: ArchivoCliente):
         return {"mensaje": "Archivo creado localmente"}
 
 # Leer archivo de cliente
-@app.get("/archivo/{nombre}")
-def obtener_archivo(nombre: str):
+@app.get("/archivos/{nombre}")
+def obtener_archivo(nombre: str, usuario=Depends(verificar_token)):
     nombre_archivo = f"{nombre}.json"
 
     if USE_AWS:

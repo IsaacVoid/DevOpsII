@@ -1,3 +1,5 @@
+from app.services.auth import verificar_token
+from fastapi import Depends
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 import json
@@ -32,7 +34,7 @@ class Cliente(BaseModel):
 
 # Crear cliente
 @app.post("/clientes/")
-def crear_cliente(cliente: Cliente):
+def crear_cliente(cliente: Cliente, usuario=Depends(verificar_token)):
     nombre_archivo = f"{cliente.nombre}.json"
 
     if USE_AWS:
@@ -101,7 +103,7 @@ def agregar_servicio(nombre: str, descripcion: str = Query(...)):
 
 # Obtener cliente
 @app.get("/clientes/{nombre}")
-def obtener_cliente(nombre: str):
+def obtener_cliente(nombre: str, usuario=Depends(verificar_token)):
     nombre_archivo = f"{nombre}.json"
 
     if USE_AWS:
@@ -123,7 +125,7 @@ def obtener_cliente(nombre: str):
 
 # Listar clientes
 @app.get("/clientes/")
-def listar_clientes():
+def listar_clientes(usuario=Depends(verificar_token)):
     if USE_AWS:
         try:
             objetos = s3.list_objects_v2(Bucket=BUCKET_NAME)

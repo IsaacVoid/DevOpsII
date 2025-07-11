@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends
+from app.services.auth import verificar_token
 import os
 import boto3
 import json
@@ -17,7 +19,7 @@ else:
 
 # Obtener cliente por nombre
 @app.get("/consultas/{nombre}")
-def consultar_cliente(nombre: str):
+def consultar_cliente(nombre: str, usuario=Depends(verificar_token)):
     nombre_archivo = f"{nombre}.json"
 
     if USE_AWS:
@@ -38,7 +40,7 @@ def consultar_cliente(nombre: str):
 
 # Listar todos los clientes
 @app.get("/consultas/")
-def listar_clientes():
+def listar_clientes(usuario=Depends(verificar_token)):
     if USE_AWS:
         try:
             objetos = s3.list_objects_v2(Bucket=BUCKET_NAME)
