@@ -1,54 +1,67 @@
-from fastapi import FastAPI, HTTPException, Query
-from fastapi import Depends
-from app.services.auth import verificar_token
+from fastapi import FastAPI, HTTPException, Query, Depends
+from pydantic import BaseModel
+from typing import Optional, List
+from datetime import datetime
 import os
-import boto3
 import json
+
+from app.services.auth import verificar_token
 
 app = FastAPI()
 
-# Configuración
 USE_AWS = os.getenv("USE_AWS", "false").lower() == "true"
-BUCKET_NAME = os.getenv("BUCKET_NAME", "clientes-bucket")
-LOCAL_DIR = "archivos_clientes"
+BUCKET_NAME = os.getenv("BUCKET_NAME", "consultas-bucket")
+LOCAL_DIR = "consultas_logs"
 
 if USE_AWS:
+    import boto3
     s3 = boto3.client("s3")
 else:
     os.makedirs(LOCAL_DIR, exist_ok=True)
 
-# Obtener cliente por nombre
-@app.get("/consultas/{nombre}")
-def consultar_cliente(nombre: str, usuario=Depends(verificar_token)):
-    nombre_archivo = f"{nombre}.json"
+class Consulta(BaseModel):
+    usuario_id: str
+    cliente_id: str
+    accion: str
+    timestamp: Optional[str] = None
+
+@app.post("/consultas")
+def registrar_consulta(consulta: Consulta, usuario=Depends(verificar_token)):
+    consulta.timestamp = datetime.utcnow().isoformat()
+    registro = consulta.dict()
 
     if USE_AWS:
-        try:
-            obj = s3.get_object(Bucket=BUCKET_NAME, Key=nombre_archivo)
-            return json.loads(obj["Body"].read())
-        except s3.exceptions.ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchKey':
-                raise HTTPException(status_code=404, detail="Cliente no encontrado")
-            else:
-                raise HTTPException(status_code=500, detail="Error al acceder a los datos del cliente")
+        key = f"{registro['timestamp']}_{registro['usuario_id']}_{registro['cliente_id']}.json"
+        s3.put_object(Bucket=BUCKET_NAME, Key=key, Body=json.dumps(registro), ContentType='application/json')
+        return {"mensaje": "Consulta registrada en S3"}
     else:
-        ruta = os.path.join(LOCAL_DIR, nombre_archivo)
-        if not os.path.exists(ruta):
-            raise HTTPException(status_code=404, detail="Cliente no encontrado")
-        with open(ruta, "r", encoding="utf-8") as f:
-            return json.load(f)
+        filename = f"{registro['timestamp']}_{registro['usuario_id']}_{registro['cliente_id']}.json"
+        ruta = os.path.join(LOCAL_DIR, filename)
+        with open(ruta, "w", encoding="utf-8") as f:
+            json.dump(registro, f)
+        return {"mensaje": "Consulta registrada localmente"}
 
-# Listar todos los clientes
-@app.get("/consultas/")
-def listar_clientes(usuario=Depends(verificar_token)):
+@app.get("/consultas", response_model=List[Consulta])
+def obtener_historial(usuario_id: Optional[str] = None, cliente_id: Optional[str] = None, usuario=Depends(verificar_token)):
+    resultados = []
+
     if USE_AWS:
-        try:
-            objetos = s3.list_objects_v2(Bucket=BUCKET_NAME)
-            if 'Contents' not in objetos:
-                return []
-            return [obj['Key'].replace('.json', '') for obj in objetos['Contents']]
-        except Exception:
-            raise HTTPException(status_code=500, detail="No se pudieron listar los clientes")
+        objetos = s3.list_objects_v2(Bucket=BUCKET_NAME)
+        if 'Contents' not in objetos:
+            return []
+        for obj in objetos['Contents']:
+            data = s3.get_object(Bucket=BUCKET_NAME, Key=obj['Key'])
+            consulta = json.loads(data['Body'].read())
+            if (usuario_id and consulta['usuario_id'] != usuario_id) or (cliente_id and consulta['cliente_id'] != cliente_id):
+                continue
+            resultados.append(consulta)
     else:
         archivos = os.listdir(LOCAL_DIR)
-        return [archivo.replace(".json", "") for archivo in archivos if archivo.endswith(".json")]
+        for archivo in archivos:
+            with open(os.path.join(LOCAL_DIR, archivo), "r", encoding="utf-8") as f:
+                consulta = json.load(f)
+                if (usuario_id and consulta['usuario_id'] != usuario_id) or (cliente_id and consulta['cliente_id'] != cliente_id):
+                    continue
+                resultados.append(consulta)
+
+    return resultados

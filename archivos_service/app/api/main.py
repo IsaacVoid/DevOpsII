@@ -1,10 +1,10 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from fastapi import Depends
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
+from fastapi.responses import FileResponse
 from app.services.auth import verificar_token
 import os
-import json
+import shutil
 import boto3
+import json
 
 app = FastAPI()
 
@@ -18,56 +18,76 @@ if not USE_AWS:
 else:
     s3 = boto3.client("s3")
 
-# Modelo de archivo
-class ArchivoCliente(BaseModel):
-    nombre: str
-    contenido: dict
 
-# Crear archivo para cliente
-@app.post("/archivos/{nombre}")
-def crear_archivo(nombre: str, datos: dict, usuario=Depends(verificar_token)):
-    nombre_archivo = f"{data.nombre}.json"
-
+# POST /archivos: subir nuevo archivo
+@app.post("/archivos")
+async def subir_archivo(cliente_id: str, archivo: UploadFile = File(...), usuario=Depends(verificar_token)):
+    nombre_archivo = f"{cliente_id}_{archivo.filename}"
     if USE_AWS:
-        try:
-            s3.head_object(Bucket=BUCKET_NAME, Key=nombre_archivo)
-            raise HTTPException(status_code=400, detail="El archivo ya existe")
-        except s3.exceptions.ClientError as e:
-            if e.response['Error']['Code'] == '404':
-                s3.put_object(
-                    Bucket=BUCKET_NAME,
-                    Key=nombre_archivo,
-                    Body=json.dumps(data.contenido),
-                    ContentType='application/json'
-                )
-                return {"mensaje": "Archivo creado en S3"}
-            else:
-                raise HTTPException(status_code=500, detail="Error de AWS al crear archivo")
+        s3.upload_fileobj(archivo.file, BUCKET_NAME, nombre_archivo)
+        return {"mensaje": "Archivo subido a S3", "archivo": nombre_archivo}
     else:
         ruta = os.path.join(LOCAL_DIR, nombre_archivo)
-        if os.path.exists(ruta):
-            raise HTTPException(status_code=400, detail="El archivo ya existe")
-        with open(ruta, "w", encoding="utf-8") as f:
-            json.dump(data.contenido, f)
-        return {"mensaje": "Archivo creado localmente"}
+        with open(ruta, "wb") as f:
+            shutil.copyfileobj(archivo.file, f)
+        return {"mensaje": "Archivo guardado localmente", "archivo": nombre_archivo}
 
-# Leer archivo de cliente
-@app.get("/archivos/{nombre}")
-def obtener_archivo(nombre: str, usuario=Depends(verificar_token)):
-    nombre_archivo = f"{nombre}.json"
 
+# GET /archivos/{id}: obtener archivo
+@app.get("/archivos/{archivo_id}")
+def obtener_archivo(archivo_id: str, usuario=Depends(verificar_token)):
     if USE_AWS:
         try:
-            obj = s3.get_object(Bucket=BUCKET_NAME, Key=nombre_archivo)
-            return json.loads(obj['Body'].read())
-        except s3.exceptions.ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchKey':
-                raise HTTPException(status_code=404, detail="Archivo no encontrado")
-            else:
-                raise HTTPException(status_code=500, detail="Error al obtener archivo")
+            obj = s3.get_object(Bucket=BUCKET_NAME, Key=archivo_id)
+            contenido = obj['Body'].read()
+            return {"archivo_id": archivo_id, "contenido": contenido.decode()}
+        except s3.exceptions.ClientError:
+            raise HTTPException(status_code=404, detail="Archivo no encontrado")
     else:
-        ruta = os.path.join(LOCAL_DIR, nombre_archivo)
+        ruta = os.path.join(LOCAL_DIR, archivo_id)
         if not os.path.exists(ruta):
             raise HTTPException(status_code=404, detail="Archivo no encontrado")
-        with open(ruta, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return FileResponse(ruta, media_type="application/octet-stream", filename=archivo_id)
+
+
+# GET /clientes/{cliente_id}/archivos: listar archivos de un cliente
+@app.get("/clientes/{cliente_id}/archivos")
+def listar_archivos_cliente(cliente_id: str, usuario=Depends(verificar_token)):
+    if USE_AWS:
+        archivos = s3.list_objects_v2(Bucket=BUCKET_NAME)
+        if 'Contents' not in archivos:
+            return []
+        return [obj['Key'] for obj in archivos['Contents'] if obj['Key'].startswith(f"{cliente_id}_")]
+    else:
+        archivos = os.listdir(LOCAL_DIR)
+        return [f for f in archivos if f.startswith(f"{cliente_id}_")]
+
+
+# PUT /archivos/{archivo_id}: reemplazar archivo existente
+@app.put("/archivos/{archivo_id}")
+async def reemplazar_archivo(archivo_id: str, nuevo_archivo: UploadFile = File(...), usuario=Depends(verificar_token)):
+    if USE_AWS:
+        s3.upload_fileobj(nuevo_archivo.file, BUCKET_NAME, archivo_id)
+        return {"mensaje": "Archivo reemplazado en S3"}
+    else:
+        ruta = os.path.join(LOCAL_DIR, archivo_id)
+        with open(ruta, "wb") as f:
+            shutil.copyfileobj(nuevo_archivo.file, f)
+        return {"mensaje": "Archivo reemplazado localmente"}
+
+
+# DELETE /archivos/{archivo_id}: eliminar archivo
+@app.delete("/archivos/{archivo_id}")
+def eliminar_archivo(archivo_id: str, usuario=Depends(verificar_token)):
+    if USE_AWS:
+        try:
+            s3.delete_object(Bucket=BUCKET_NAME, Key=archivo_id)
+            return {"mensaje": "Archivo eliminado de S3"}
+        except s3.exceptions.ClientError:
+            raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    else:
+        ruta = os.path.join(LOCAL_DIR, archivo_id)
+        if not os.path.exists(ruta):
+            raise HTTPException(status_code=404, detail="Archivo no encontrado")
+        os.remove(ruta)
+        return {"mensaje": "Archivo eliminado localmente"}
